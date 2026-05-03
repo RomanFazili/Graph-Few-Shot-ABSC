@@ -47,7 +47,6 @@ class SentenceRetriever:
             self._corpus_rows = list(self.data_set.all_sentences_with_aspects_and_polarities)
         return self._corpus_rows
 
-
     def _ensure_bm25_index(self) -> None:
         if self._bm25_index is not None:
             return
@@ -111,10 +110,10 @@ class SentenceRetriever:
         top_indices = scores[0].argsort(descending=True)[:top_k].cpu().tolist()
         return [corpus[int(i)] for i in top_indices]
 
-    def _get_nodes_from_sentence_via_lex(self, sentence: str) -> list[str]:
+    def _get_nodes_from_sentence_via_lex_restaurant(self, sentence: str) -> list[str]:
         """
-        Return local names of every class whose ``restaurant:lex`` occurs in ``sentence`` (case-insensitive)
-        and every **named** direct superclass from ``rdfs:subClassOf``, as a single deduplicated list.
+        Return local names of every class whose ``restaurant:lex`` occurs in ``sentence`` (case-insensitive),
+        deduplicated.
 
         The sentence is normalized by removing punctuation and other non-word, non-space symbols, then
         matching requires ASCII spaces on both sides of the lex substring (via leading/trailing padding
@@ -125,16 +124,11 @@ class SentenceRetriever:
 
         sparql_query = f"""
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX restaurant: <http://www.kimschouten.com/sentiment/restaurant#>
-        SELECT DISTINCT ?s ?parent WHERE {{
+        SELECT DISTINCT ?s WHERE {{
             ?s a owl:Class .
             ?s restaurant:lex ?lexValue .
             FILTER(CONTAINS(LCASE("{safe}"), CONCAT(" ", LCASE(STR(?lexValue)), " ")))
-            OPTIONAL {{
-                ?s rdfs:subClassOf ?parent .
-                FILTER(isIRI(?parent))
-            }}
         }}
         """
         qres = self.ontology.query(sparql_query)
@@ -145,11 +139,11 @@ class SentenceRetriever:
 
         accum: list[str] = []
         for row in qres:
-            accum.extend(_local_name(n) for n in filter(None, (row[0], row[1])))
+            accum.append(_local_name(row[0]))
         return list(dict.fromkeys(accum))
 
 
-    def graph_based_demonstration_selection(self, query_sentence: str, top_k: int) -> list[tuple[str, list[tuple[str, Polarity]]]]:
+    def graph_based_demonstration_selection_naive(self, query_sentence: str, top_k: int) -> list[tuple[str, list[tuple[str, Polarity]]]]:
         """
         For the input sentence, fetch a list (or set?) of nodes that can be found in the ontology
         Do the same for all sentences in the training data
@@ -164,14 +158,14 @@ class SentenceRetriever:
         if self._graph_lex_nodes_by_sentence is None:
             nodes_by_sentence: dict[str, list[str]] = {}
             for sentence in self.data_set.all_sentences_as_text:
-                nodes = self._get_nodes_from_sentence_via_lex(sentence)
+                nodes = self._get_nodes_from_sentence_via_lex_restaurant(sentence)
                 nodes_by_sentence[sentence] = nodes
 
             self._graph_lex_nodes_by_sentence = nodes_by_sentence
         else:
             nodes_by_sentence = self._graph_lex_nodes_by_sentence
 
-        query_nodes = self._get_nodes_from_sentence_via_lex(query_sentence)
+        query_nodes = self._get_nodes_from_sentence_via_lex_restaurant(query_sentence)
 
         corpus = self._get_corpus_rows()
         row_by_sentence: dict[str, tuple[str, list[tuple[str, Polarity]]]] = {
@@ -202,4 +196,4 @@ if __name__ == "__main__":
     sentence_retriever = SentenceRetriever(DataSet(file_path), g)
     print(sentence_retriever._get_nodes_from_sentence_via_lex("I enjoyed the green tea."))
     print(sentence_retriever._get_nodes_from_sentence_via_lex("I enjoyed the green ravelling tea."))
-    print(sentence_retriever.graph_based_demonstration_selection("We very much enjoyed the restaurant and the food.", 3))
+    print(sentence_retriever.graph_based_demonstration_selection_naive("We very much enjoyed the restaurant and the food.", 3))
