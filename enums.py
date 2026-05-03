@@ -28,4 +28,5 @@ class OntologyFormat(StrEnum):
 class DemonstrationSelectionMethod(StrEnum):
     BM25 = "BM25"
     SimCSE = "SimCSE"
-    # Graph = "Graph"
+    GRAPH_IC = "GraphIC"
+    GRAPH_VP = "GraphVP"
